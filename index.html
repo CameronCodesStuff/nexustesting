@@ -1880,6 +1880,16 @@ async function doRegister(){
       uid:cred.user.uid, displayName:un, username:unLower,
       msgCount:0, online:true, createdAt:serverTimestamp()
     });
+    // Give referrer the referral role
+    if(referredByUid){
+      try{
+        const refUserSnap=await getDoc(doc(db,'users',referredByUid));
+        if(refUserSnap.exists()){
+          const roles=refUserSnap.data().roles||[];
+          if(!roles.includes('referral')) await updateDoc(doc(db,'users',referredByUid),{roles:[...roles,'referral']});
+        }
+      }catch{}
+    }
     err.textContent='';toast('Welcome to NEXUS!','success');
     const ls=document.getElementById('loading-screen');if(ls){ls.style.display='flex';ls.style.opacity='1';}
   }catch(e){
@@ -1997,6 +2007,24 @@ async function enterApp(){
   applyMobileMode(mobileMode);
   checkAnnouncement();
   checkPopup();
+  // Generate referral code if user doesn't have one
+  // Generate deterministic referral code from UID (same every time, instant)
+  (()=>{
+    const uid=cu.uid;
+    // Simple deterministic hash: sum char codes with position multiplier
+    let h=0;for(let i=0;i<uid.length;i++) h=(h*31+uid.charCodeAt(i))>>>0;
+    const ltrs='ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const digs='23456789';
+    const pick=(arr,n)=>arr[n%arr.length];
+    const code=pick(ltrs,h)+pick(ltrs,h>>5)+pick(ltrs,h>>10)+pick(digs,h>>15)+pick(digs,h>>20)+pick(ltrs,h>>25)+pick(ltrs,h>>3);
+    // Update cud immediately so renderSettings can show it
+    if(!cud?.referralCode||cud.referralCode==='…') cud={...cud,referralCode:code};
+    // Save to Firestore in background (only if not already saved)
+    if(!cud?.referralCode||cud.referralCode!==code){
+      updateDoc(doc(db,'users',uid),{referralCode:code}).catch(()=>{});
+    }
+    setDoc(doc(db,'referrals',code),{uid,createdAt:serverTimestamp()},{merge:true}).catch(()=>{});
+  })();
   // Clean up any stale call docs from previous sessions
   try{
     const staleQ=query(collection(db,'calls'),where('members','array-contains',cu.uid));
@@ -2787,7 +2815,23 @@ function renderSettings(){
     }
   }
   if(refSection){
-    const myCode=cud?.referralCode||'…';
+    // If no code yet, trigger generation
+    if(!cud?.referralCode&&cu){
+      (async()=>{
+        try{
+          const ltrs='ABCDEFGHJKLMNPQRSTUVWXYZ';
+          const digs='0123456789';
+          const rl=()=>ltrs[Math.floor(Math.random()*ltrs.length)];
+          const rd=()=>digs[Math.floor(Math.random()*digs.length)];
+          const code=rl()+rl()+rl()+rd()+rd()+rl()+rl();
+          await updateDoc(doc(db,'users',cu.uid),{referralCode:code});
+          await setDoc(doc(db,'referrals',code),{uid:cu.uid,createdAt:serverTimestamp()});
+          cud={...cud,referralCode:code};
+          if(window._N&&window._N.renderSettings) window._N.renderSettings();
+        }catch{}
+      })();
+    }
+    const myCode=cud?.referralCode||'Generating…';
     refSection.innerHTML='';
     const _rTitle=document.createElement('div');_rTitle.className='settings-section-title';_rTitle.textContent='REFERRAL';refSection.appendChild(_rTitle);
     const _rBox=document.createElement('div');
