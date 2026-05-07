@@ -2008,25 +2008,74 @@ async function enterApp(){
   checkAnnouncement();
   checkPopup();
   // Generate referral code if user doesn't have one
-  // Generate deterministic referral code from UID (same every time, instant)
-  (()=>{
+  // Generate deterministic referral code from UID (same every time)
+  (async()=>{
     const uid=cu.uid;
-    // Simple deterministic hash: sum char codes with position multiplier
     let h=0;for(let i=0;i<uid.length;i++) h=(h*31+uid.charCodeAt(i))>>>0;
-    const ltrs='ABCDEFGHJKLMNPQRSTUVWXYZ';
-    const digs='23456789';
-    // Mix hash at different offsets to get varied digits
-    const h1=(h^(h>>>7))>>>0;
-    const h2=(h1^(h1>>>13))>>>0;
-    const h3=(h2^(h2>>>17))>>>0;
+    const ltrs='ABCDEFGHJKLMNPQRSTUVWXYZ',digs='23456789';
+    const h1=(h^(h>>>7))>>>0,h2=(h1^(h1>>>13))>>>0,h3=(h2^(h2>>>17))>>>0;
     const code=ltrs[h%ltrs.length]+ltrs[h1%ltrs.length]+ltrs[h2%ltrs.length]+digs[h%digs.length]+digs[h1%digs.length]+ltrs[h3%ltrs.length]+ltrs[(h2^h3)%ltrs.length];
-    // Update cud immediately so renderSettings can show it
-    if(!cud?.referralCode||cud.referralCode==='…') cud={...cud,referralCode:code};
-    // Save to Firestore in background (only if not already saved)
-    if(!cud?.referralCode||cud.referralCode!==code){
-      updateDoc(doc(db,'users',uid),{referralCode:code}).catch(()=>{});
+    // Always update cud with the code immediately
+    cud={...cud,referralCode:code};
+    uCache[uid]={...uCache[uid],referralCode:code};
+    // Save to Firestore
+    try{
+      await updateDoc(doc(db,'users',uid),{referralCode:code});
+      await setDoc(doc(db,'referrals',code),{uid,createdAt:serverTimestamp()},{merge:true});
+    }catch{}
+    // Re-render settings if open so code shows
+    if(window._N&&window._N.renderSettings) window._N.renderSettings();
+
+    // ── Track referred users' minutes ──
+    // Listen to all users who were referred by this user
+    // When they accumulate 5 minutes, award +500 msgs and notify
+    onSnapshot(
+      query(collection(db,'users'),where('referredBy','==',uid)),
+      async snap=>{
+        for(const ch of snap.docChanges()){
+          if(ch.type==='modified'){
+            const rd=ch.doc.data();
+            const mins=rd.referralMinutes||0;
+            if(mins>=5&&rd.referredBy===uid){
+              // Award +500 messages to referrer
+              const newCount=(cud.msgCount||0)+500;
+              try{
+                await updateDoc(doc(db,'users',uid),{
+                  msgCount:newCount,
+                  referralCount:(cud.referralCount||0)+1
+                });
+                cud={...cud,msgCount:newCount,referralCount:(cud.referralCount||0)+1};
+                uCache[uid]={...uCache[uid],msgCount:newCount};
+                // Remove referredBy from referred user so this only fires once
+                await updateDoc(doc(db,'users',ch.doc.id),{referredBy:null});
+                toast('🎉 Your referral earned you +500 messages! ('+rd.displayName+' has been active for 5 mins)','success');
+              }catch{}
+            }
+          }
+        }
+        // Update referral count display
+        const allReferred=snap.docs.filter(d=>d.data().referredBy===uid||d.data().referredBy===null&&d.data().referralCode===undefined);
+        const activeReferrals=snap.docs.length;
+        if(cud.referralCount!==activeReferrals){
+          cud={...cud,referralCount:activeReferrals};
+        }
+        if(window._N&&window._N.renderSettings) window._N.renderSettings();
+      }
+    );
+
+    // Track THIS user's active time if they were referred
+    if(cud?.referredBy){
+      const _refInterval=setInterval(async()=>{
+        if(!cu) return clearInterval(_refInterval);
+        try{
+          const curMins=cud?.referralMinutes||0;
+          if(curMins>=5) return clearInterval(_refInterval);
+          const newMins=curMins+1;
+          await updateDoc(doc(db,'users',uid),{referralMinutes:newMins});
+          cud={...cud,referralMinutes:newMins};
+        }catch{}
+      },60000);
     }
-    setDoc(doc(db,'referrals',code),{uid,createdAt:serverTimestamp()},{merge:true}).catch(()=>{});
   })();
   // Clean up any stale call docs from previous sessions
   try{
@@ -2845,7 +2894,12 @@ function renderSettings(){
     const _rCopy=document.createElement('button');_rCopy.textContent='COPY';_rCopy.style.cssText='background:rgba(68,102,255,0.15);border:1px solid var(--accent);color:var(--accent);font-family:var(--font-mono);font-size:9px;letter-spacing:2px;padding:4px 10px;border-radius:6px;cursor:pointer;';
     _rCopy.addEventListener('click',()=>{navigator.clipboard.writeText(myCode).then(()=>{_rCopy.textContent='COPIED!';setTimeout(()=>{_rCopy.textContent='COPY';},1500);}).catch(()=>{});});
     _rRow.appendChild(_rCode);_rRow.appendChild(_rCopy);
-    const _rInfo=document.createElement('div');_rInfo.style.cssText='font-size:10px;color:var(--text-dim);font-family:var(--font-mono);line-height:1.5;';_rInfo.textContent='Share this code. Friends who use it when signing up give you the REFERRAL badge. Once they spend 5 mins on NEXUS you earn +500 messages.';
+    const refCount=cud?.referralCount||0;
+    const _rStats=document.createElement('div');_rStats.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+    const _rBadge=document.createElement('div');_rBadge.style.cssText='font-size:11px;font-family:var(--font-mono);color:var(--text-dim);';_rBadge.innerHTML='<span style="color:var(--accent);font-weight:bold;">'+refCount+'</span> friend'+(refCount!==1?'s':'')+' referred';
+    _rStats.appendChild(_rBadge);
+    _rBox.appendChild(_rStats);
+    const _rInfo=document.createElement('div');_rInfo.style.cssText='font-size:10px;color:var(--text-dim);font-family:var(--font-mono);line-height:1.5;';_rInfo.textContent='Share this code. Friends who sign up with it give you the REFERRAL badge. Once they spend 5 mins on NEXUS you earn +500 messages.';
     _rBox.appendChild(_rLbl);_rBox.appendChild(_rRow);_rBox.appendChild(_rInfo);
     refSection.appendChild(_rBox);
   }
