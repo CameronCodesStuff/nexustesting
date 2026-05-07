@@ -621,7 +621,7 @@
   .time-rainbow{background:linear-gradient(90deg,#ff0080,#ff8c00,#ffe100,#00ff88,#00c8ff,#9933ff,#ff0080);background-size:300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:role-rainbow 2s linear infinite;font-weight:700;}
   /* Leaderboard */
   .lb-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;}
-  .lb-tab{flex:1;padding:10px;text-align:center;cursor:pointer;font-family:var(--font-display);font-size:10px;letter-spacing:2px;color:var(--text-dim);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.2s;}
+  .lb-tab{flex:1;padding:8px 4px;text-align:center;cursor:pointer;font-family:var(--font-display);font-size:9px;letter-spacing:1px;color:var(--text-dim);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.2s;}
   .lb-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
   .lb-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);margin-bottom:6px;transition:border-color 0.2s;}
   .lb-row:hover{border-color:rgba(68,102,255,0.3);}
@@ -983,7 +983,7 @@
 
 <!-- LEADERBOARD MODAL -->
 <div class="modal-overlay" id="lb-modal">
-  <div class="modal" style="width:480px;">
+  <div class="modal" style="width:660px;max-width:96vw;">
     <div class="modal-title">🏅 LEADERBOARD</div>
     <button class="modal-close" onclick="N.closeModal('lb-modal')">✕</button>
     <div class="lb-tabs">
