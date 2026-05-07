@@ -552,6 +552,8 @@
     100%{color:#4466ff;border-color:rgba(68,102,255,0.8);background:rgba(68,102,255,0.15);text-shadow:0 0 8px rgba(68,102,255,0.6);}
   }
   .role-beginner-tester{display:inline-block;font-size:9px;font-family:'Orbitron',monospace;letter-spacing:2px;padding:2px 8px;border-radius:4px;border:1px solid rgba(68,102,255,0.8);font-weight:900;vertical-align:middle;margin-left:8px;animation:btester-anim 2s linear infinite;}
+  @keyframes referral-anim{0%{color:#cc0000;border-color:rgba(180,0,0,0.8);background:rgba(140,0,0,0.15);text-shadow:0 0 8px rgba(180,0,0,0.6);}50%{color:#880000;border-color:rgba(100,0,0,0.8);background:rgba(80,0,0,0.2);text-shadow:0 0 12px rgba(120,0,0,0.8);}100%{color:#cc0000;border-color:rgba(180,0,0,0.8);background:rgba(140,0,0,0.15);text-shadow:0 0 8px rgba(180,0,0,0.6);}}
+  .role-referral{display:inline-block;font-size:9px;font-family:'Orbitron',monospace;letter-spacing:2px;padding:2px 8px;border-radius:4px;border:1px solid rgba(180,0,0,0.8);font-weight:900;vertical-align:middle;margin-left:8px;animation:referral-anim 2s ease-in-out infinite;}
   @keyframes owner-pulse{0%,100%{transform:scale(1);filter:brightness(1);}50%{transform:scale(1.08);filter:brightness(1.5);}}
   .role-owner{display:inline-block;font-size:9px;font-family:'Orbitron',monospace;letter-spacing:2px;padding:2px 8px;border-radius:4px;background:linear-gradient(90deg,#ff0080,#ff8c00,#ffe100,#00ff88,#00c8ff,#9933ff,#ff0080);background-size:300%;color:#fff;border:none;animation:role-rainbow 2s linear infinite,owner-pulse 2s ease infinite;font-weight:900;vertical-align:middle;margin-left:8px;text-shadow:0 1px 3px rgba(0,0,0,0.8);-webkit-text-fill-color:initial;}
 
@@ -991,6 +993,7 @@
       <div class="lb-tab" id="lb-tab-flap" onclick="N.lbTab('flap')">NEXUS FLAP</div>
       <div class="lb-tab" id="lb-tab-wpm" onclick="N.lbTab('wpm')">TYPING WPM</div>
       <div class="lb-tab" id="lb-tab-drift" onclick="N.lbTab('drift')">DRIFT KING</div>
+      <div class="lb-tab" id="lb-tab-referrals" onclick="N.lbTab('referrals')">REFERRALS</div>
     </div>
     <div id="lb-content"></div>
   </div>
@@ -5084,8 +5087,8 @@ async function loadOwnerUsers(){
   }
 }
 
-const ROLE_OPTS=['owner','tester','beginner_tester','bugfinder','feedback','og','easter'];
-const ROLE_LABELS={owner:'Owner',tester:'Tester',beginner_tester:'Beginner Tester',bugfinder:'Bug Finder',feedback:'Feedback',og:'OG',easter:'Easter Egg 🐣'};
+const ROLE_OPTS=['owner','tester','beginner_tester','bugfinder','feedback','og','easter','referral'];
+const ROLE_LABELS={owner:'Owner',tester:'Tester',beginner_tester:'Beginner Tester',bugfinder:'Bug Finder',feedback:'Feedback',referral:'Referral',og:'OG',easter:'Easter Egg 🐣'};
 
 async function loadRolesPanel(){
   const panel=document.getElementById('op-panel-roles');
@@ -5935,6 +5938,7 @@ function getRoleBadge(uid){
     feedback: '<span class="role-feedback">FEEDBACK</span>',
     og:       '<span class="role-og">OG</span>',
     easter:   '<span class="role-easter">🐣 EASTER EGG</span>',
+    referral: '<span class="role-referral">REFERRAL</span>',
   };
   return roles.map(r=>map[r]||'').join('');
 }
@@ -6877,6 +6881,7 @@ function lbTab(tab){
   document.getElementById('lb-tab-flap')?.classList.toggle('active',tab==='flap');
   document.getElementById('lb-tab-wpm')?.classList.toggle('active',tab==='wpm');
   document.getElementById('lb-tab-drift')?.classList.toggle('active',tab==='drift');
+  document.getElementById('lb-tab-referrals')?.classList.toggle('active',tab==='referrals');
   renderLeaderboard(tab);
 }
 
@@ -6898,8 +6903,10 @@ async function renderLeaderboard(tab){
       users=users.filter(u=>(u.flapBest||0)>0).sort((a,b)=>(b.flapBest||0)-(a.flapBest||0)).slice(0,20);
     } else if(tab==='wpm'){
       users=users.filter(u=>(u.bestWpm||0)>0).sort((a,b)=>(b.bestWpm||0)-(a.bestWpm||0)).slice(0,20);
-    } else {
+    } else if(tab==='drift'){
       users=users.filter(u=>(u.driftBest||0)>0).sort((a,b)=>(b.driftBest||0)-(a.driftBest||0)).slice(0,20);
+    } else {
+      users=users.filter(u=>(u.referralCount||0)>0).sort((a,b)=>(b.referralCount||0)-(a.referralCount||0)).slice(0,20);
     }
     if(!users.length){el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-dim);font-family:var(--font-mono);">No data yet.</div>';return;}
     el.innerHTML='';
@@ -6965,6 +6972,11 @@ async function renderLeaderboard(tab){
         const badge=document.createElement('div');
         badge.style.cssText='font-family:var(--font-display);font-size:11px;color:#ff6622;letter-spacing:1px;';
         badge.textContent='🚗 '+(u.driftBest||0).toLocaleString();
+        row.appendChild(badge);
+      } else if(tab==='referrals'){
+        const badge=document.createElement('div');
+        badge.style.cssText='font-family:var(--font-display);font-size:11px;color:#cc0000;letter-spacing:1px;';
+        badge.textContent='👥 '+(u.referralCount||0)+' referral'+(( u.referralCount||0)!==1?'s':'');
         row.appendChild(badge);
       }
       el.appendChild(row);
