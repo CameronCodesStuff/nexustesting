@@ -2015,8 +2015,11 @@ async function enterApp(){
     let h=0;for(let i=0;i<uid.length;i++) h=(h*31+uid.charCodeAt(i))>>>0;
     const ltrs='ABCDEFGHJKLMNPQRSTUVWXYZ';
     const digs='23456789';
-    const pick=(arr,n)=>arr[n%arr.length];
-    const code=pick(ltrs,h)+pick(ltrs,h>>5)+pick(ltrs,h>>10)+pick(digs,h>>15)+pick(digs,h>>20)+pick(ltrs,h>>25)+pick(ltrs,h>>3);
+    // Mix hash at different offsets to get varied digits
+    const h1=(h^(h>>>7))>>>0;
+    const h2=(h1^(h1>>>13))>>>0;
+    const h3=(h2^(h2>>>17))>>>0;
+    const code=ltrs[h%ltrs.length]+ltrs[h1%ltrs.length]+ltrs[h2%ltrs.length]+digs[h%digs.length]+digs[h1%digs.length]+ltrs[h3%ltrs.length]+ltrs[(h2^h3)%ltrs.length];
     // Update cud immediately so renderSettings can show it
     if(!cud?.referralCode||cud.referralCode==='…') cud={...cud,referralCode:code};
     // Save to Firestore in background (only if not already saved)
