@@ -1116,7 +1116,7 @@ import {
   getFirestore, collection, doc, setDoc, getDoc, getDocs,
   addDoc, updateDoc, deleteDoc, onSnapshot, query, where,
   orderBy, limitToLast, startAfter, endBefore, limit,
-  serverTimestamp, arrayUnion, arrayRemove
+  serverTimestamp, arrayUnion, arrayRemove, increment
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 // ── STARFIELD ──────────────────────────────────
@@ -1891,20 +1891,16 @@ async function doRegister(){
       referralMinutes:0,
       referralCount:0
     });
-    // Process referral rewards
+    // Process referral rewards - give role and +500 msgs immediately on signup
     if(referredByUid){
       try{
-        const refUserSnap=await getDoc(doc(db,'users',referredByUid));
-        if(refUserSnap.exists()){
-          const rdata=refUserSnap.data();
-          const roles=rdata.roles||[];
-          const newReferralCount=(rdata.referralCount||0)+1;
-          const updates={referralCount:newReferralCount};
-          // Grant referral role if not already
-          if(!roles.includes('referral')) updates.roles=[...roles,'referral'];
-          await updateDoc(doc(db,'users',referredByUid),updates);
-        }
-      }catch(e){console.warn('Referral role grant failed:',e);}
+        // Use arrayUnion so we don't need to read first (avoids security rule issues)
+        await updateDoc(doc(db,'users',referredByUid),{
+          roles: arrayUnion('referral'),
+          referralCount: increment(1),
+          msgCount: increment(500)
+        });
+      }catch(e){console.warn('Referral reward failed:',e);}
     }
     err.textContent='';toast('Welcome to NEXUS!'+(refCode?' Referral code applied!':''),'success');
     const ls=document.getElementById('loading-screen');if(ls){ls.style.display='flex';ls.style.opacity='1';}
@@ -2055,42 +2051,7 @@ async function enterApp(){
       }
     });
 
-    // Listen for referred users hitting 5 minutes (rewarded = false → true)
-    onSnapshot(
-      query(collection(db,'users'),where('referredBy','==',uid)),
-      async snap=>{
-        for(const ch of snap.docChanges()){
-          if(ch.type!=='modified') continue;
-          const rd=ch.doc.data();
-          const mins=rd.referralMinutes||0;
-          if(mins>=5){
-            try{
-              // Mark as rewarded by clearing referredBy so it doesn't fire again
-              await updateDoc(doc(db,'users',ch.doc.id),{referredBy:null});
-              // Give referrer +500 messages
-              const newCount=(cud.msgCount||0)+500;
-              await updateDoc(doc(db,'users',uid),{msgCount:newCount});
-              cud={...cud,msgCount:newCount};
-              uCache[uid]={...uCache[uid],msgCount:newCount};
-              toast('🎉 +500 messages! '+( rd.displayName||'Your referral')+' has been active for 5 minutes!','success');
-            }catch(e){console.warn('Referral reward failed:',e);}
-          }
-        }
-      }
-    );
-
-    // Track THIS user's time if they were referred (increment every 60s)
-    if(cud?.referredBy){
-      const _refInt=setInterval(async()=>{
-        if(!cu||!cud?.referredBy) return clearInterval(_refInt);
-        const curMins=cud?.referralMinutes||0;
-        if(curMins>=5){clearInterval(_refInt);return;}
-        try{
-          await updateDoc(doc(db,'users',uid),{referralMinutes:curMins+1});
-          cud={...cud,referralMinutes:curMins+1};
-        }catch{}
-      },60000);
-    }
+    // Rewards are instant - no minute tracking needed
   })();
   // Clean up any stale call docs from previous sessions
   try{
@@ -2914,7 +2875,7 @@ function renderSettings(){
     const _rBadge=document.createElement('div');_rBadge.style.cssText='font-size:11px;font-family:var(--font-mono);color:var(--text-dim);';_rBadge.innerHTML='<span style="color:var(--accent);font-weight:bold;">'+refCount+'</span> friend'+(refCount!==1?'s':'')+' referred';
     _rStats.appendChild(_rBadge);
     _rBox.appendChild(_rStats);
-    const _rInfo=document.createElement('div');_rInfo.style.cssText='font-size:10px;color:var(--text-dim);font-family:var(--font-mono);line-height:1.5;';_rInfo.textContent='Share this code. Friends who sign up with it give you the REFERRAL badge. Once they spend 5 mins on NEXUS you earn +500 messages.';
+    const _rInfo=document.createElement('div');_rInfo.style.cssText='font-size:10px;color:var(--text-dim);font-family:var(--font-mono);line-height:1.5;';_rInfo.textContent='Share this code with friends. When they sign up using your code you instantly get the REFERRAL badge and +500 messages.';
     _rBox.appendChild(_rLbl);_rBox.appendChild(_rRow);_rBox.appendChild(_rInfo);
     refSection.appendChild(_rBox);
   }
