@@ -1894,12 +1894,19 @@ async function doRegister(){
     // Process referral rewards - give role and +500 msgs immediately on signup
     if(referredByUid){
       try{
-        // Use arrayUnion so we don't need to read first (avoids security rule issues)
-        await updateDoc(doc(db,'users',referredByUid),{
-          roles: arrayUnion('referral'),
-          referralCount: increment(1),
-          msgCount: increment(500)
-        });
+        // Read then write (same pattern as owner portal role system)
+        const _rSnap=await getDoc(doc(db,'users',referredByUid));
+        if(_rSnap.exists()){
+          const _rData=_rSnap.data();
+          const _rRoles=_rData.roles||[];
+          const _newRoles=_rRoles.includes('referral')?_rRoles:[..._rRoles,'referral'];
+          await updateDoc(doc(db,'users',referredByUid),{
+            roles: _newRoles,
+            role: _newRoles[0]||null,
+            referralCount: increment(1),
+            msgCount: increment(500)
+          });
+        }
       }catch(e){console.warn('Referral reward failed:',e);}
     }
     err.textContent='';toast('Welcome to NEXUS!'+(refCode?' Referral code applied!':''),'success');
