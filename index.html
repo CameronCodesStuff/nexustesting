@@ -1862,35 +1862,51 @@ function switchTab(tab){
 
 async function doRegister(){
   const un=$('reg-user').value.trim(),pw=$('reg-pass').value,pw2=$('reg-pass2').value;
+  const refCode=(document.getElementById('reg-referral')?.value||'').trim().toUpperCase();
   const err=$('reg-error-2')||$('reg-error');
   const tncCheck=document.getElementById('tnc-check');
   if(tncCheck&&!tncCheck.checked){err.textContent='You must agree to the Terms & Conditions.';return;}
   err.textContent='Checking username…';
   const unLower=un.toLowerCase();
   try{
-    // Check the dedicated usernames collection (case-insensitive, unique)
+    // Validate referral code if provided
+    let referredByUid=null;
+    if(refCode){
+      const refSnap=await getDoc(doc(db,'referrals',refCode)).catch(()=>null);
+      if(!refSnap?.exists()){err.textContent='Invalid referral code. Leave blank if none.';return;}
+      referredByUid=refSnap.data().uid;
+    }
+    // Check username taken
     const unameSnap=await getDoc(doc(db,'usernames',unLower));
     if(unameSnap.exists()){err.textContent='Username already taken. Choose another.';return;}
     err.textContent='Creating account…';
     const cred=await createUserWithEmailAndPassword(auth,toEmail(un),pw);
     await updateProfile(cred.user,{displayName:un});
-    // Reserve the username atomically
     await setDoc(doc(db,'usernames',unLower),{uid:cred.user.uid,createdAt:serverTimestamp()});
+    // Save new user with referral info
     await setDoc(doc(db,'users',cred.user.uid),{
       uid:cred.user.uid, displayName:un, username:unLower,
-      msgCount:0, online:true, createdAt:serverTimestamp()
+      msgCount:0, online:true, createdAt:serverTimestamp(),
+      referredBy:referredByUid||null,
+      referralMinutes:0,
+      referralCount:0
     });
-    // Give referrer the referral role
+    // Process referral rewards
     if(referredByUid){
       try{
         const refUserSnap=await getDoc(doc(db,'users',referredByUid));
         if(refUserSnap.exists()){
-          const roles=refUserSnap.data().roles||[];
-          if(!roles.includes('referral')) await updateDoc(doc(db,'users',referredByUid),{roles:[...roles,'referral']});
+          const rdata=refUserSnap.data();
+          const roles=rdata.roles||[];
+          const newReferralCount=(rdata.referralCount||0)+1;
+          const updates={referralCount:newReferralCount};
+          // Grant referral role if not already
+          if(!roles.includes('referral')) updates.roles=[...roles,'referral'];
+          await updateDoc(doc(db,'users',referredByUid),updates);
         }
-      }catch{}
+      }catch(e){console.warn('Referral role grant failed:',e);}
     }
-    err.textContent='';toast('Welcome to NEXUS!','success');
+    err.textContent='';toast('Welcome to NEXUS!'+(refCode?' Referral code applied!':''),'success');
     const ls=document.getElementById('loading-screen');if(ls){ls.style.display='flex';ls.style.opacity='1';}
   }catch(e){
     const m=e.message||'';
@@ -2026,53 +2042,52 @@ async function enterApp(){
     // Re-render settings if open so code shows
     if(window._N&&window._N.renderSettings) window._N.renderSettings();
 
-    // ── Track referred users' minutes ──
-    // Listen to all users who were referred by this user
-    // When they accumulate 5 minutes, award +500 msgs and notify
+    // Watch referrer's own doc for referralCount changes (updated on registration)
+    onSnapshot(doc(db,'users',uid),snap=>{
+      if(!snap.exists()) return;
+      const d=snap.data();
+      // Update referral count in cud
+      if(d.referralCount!==undefined&&d.referralCount!==cud.referralCount){
+        cud={...cud,referralCount:d.referralCount,roles:d.roles||cud.roles||[]};
+        uCache[uid]={...uCache[uid],referralCount:d.referralCount,roles:d.roles||[]};
+        if(window._N&&window._N.renderSettings) window._N.renderSettings();
+        if(window._N&&window._N.renderSidebar) renderSidebar();
+      }
+    });
+
+    // Listen for referred users hitting 5 minutes (rewarded = false → true)
     onSnapshot(
       query(collection(db,'users'),where('referredBy','==',uid)),
       async snap=>{
         for(const ch of snap.docChanges()){
-          if(ch.type==='modified'){
-            const rd=ch.doc.data();
-            const mins=rd.referralMinutes||0;
-            if(mins>=5&&rd.referredBy===uid){
-              // Award +500 messages to referrer
+          if(ch.type!=='modified') continue;
+          const rd=ch.doc.data();
+          const mins=rd.referralMinutes||0;
+          if(mins>=5){
+            try{
+              // Mark as rewarded by clearing referredBy so it doesn't fire again
+              await updateDoc(doc(db,'users',ch.doc.id),{referredBy:null});
+              // Give referrer +500 messages
               const newCount=(cud.msgCount||0)+500;
-              try{
-                await updateDoc(doc(db,'users',uid),{
-                  msgCount:newCount,
-                  referralCount:(cud.referralCount||0)+1
-                });
-                cud={...cud,msgCount:newCount,referralCount:(cud.referralCount||0)+1};
-                uCache[uid]={...uCache[uid],msgCount:newCount};
-                // Remove referredBy from referred user so this only fires once
-                await updateDoc(doc(db,'users',ch.doc.id),{referredBy:null});
-                toast('🎉 Your referral earned you +500 messages! ('+rd.displayName+' has been active for 5 mins)','success');
-              }catch{}
-            }
+              await updateDoc(doc(db,'users',uid),{msgCount:newCount});
+              cud={...cud,msgCount:newCount};
+              uCache[uid]={...uCache[uid],msgCount:newCount};
+              toast('🎉 +500 messages! '+( rd.displayName||'Your referral')+' has been active for 5 minutes!','success');
+            }catch(e){console.warn('Referral reward failed:',e);}
           }
         }
-        // Update referral count display
-        const allReferred=snap.docs.filter(d=>d.data().referredBy===uid||d.data().referredBy===null&&d.data().referralCode===undefined);
-        const activeReferrals=snap.docs.length;
-        if(cud.referralCount!==activeReferrals){
-          cud={...cud,referralCount:activeReferrals};
-        }
-        if(window._N&&window._N.renderSettings) window._N.renderSettings();
       }
     );
 
-    // Track THIS user's active time if they were referred
+    // Track THIS user's time if they were referred (increment every 60s)
     if(cud?.referredBy){
-      const _refInterval=setInterval(async()=>{
-        if(!cu) return clearInterval(_refInterval);
+      const _refInt=setInterval(async()=>{
+        if(!cu||!cud?.referredBy) return clearInterval(_refInt);
+        const curMins=cud?.referralMinutes||0;
+        if(curMins>=5){clearInterval(_refInt);return;}
         try{
-          const curMins=cud?.referralMinutes||0;
-          if(curMins>=5) return clearInterval(_refInterval);
-          const newMins=curMins+1;
-          await updateDoc(doc(db,'users',uid),{referralMinutes:newMins});
-          cud={...cud,referralMinutes:newMins};
+          await updateDoc(doc(db,'users',uid),{referralMinutes:curMins+1});
+          cud={...cud,referralMinutes:curMins+1};
         }catch{}
       },60000);
     }
