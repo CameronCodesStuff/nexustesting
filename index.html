@@ -678,6 +678,7 @@
         <input type="text" id="reg-user" placeholder="Username (letters, numbers, underscores)" autocomplete="off">
         <input type="password" id="reg-pass" placeholder="Password (min 6 chars)">
         <input type="password" id="reg-pass2" placeholder="Confirm password">
+        <input type="text" id="reg-referral" placeholder="Referral code (optional)" autocomplete="off" style="text-transform:uppercase;margin-top:4px;">
         <div class="auth-error" id="reg-error"></div>
         <button class="btn-primary" onclick="N.showTnC()">CONTINUE ›</button>
         <div class="auth-info">No email required. Your username is your identity.</div>
@@ -2775,6 +2776,33 @@ function renderSettings(){
   const myEmoji=userEmoji(cu?.uid||'');
   const nm=cud?.displayName||'User';
 
+  // ── REFERRAL CODE ──
+  let refSection=document.getElementById('settings-referral');
+  if(!refSection){
+    const modal=document.querySelector('#settings-modal .modal');
+    if(modal){
+      refSection=document.createElement('div');
+      refSection.id='settings-referral';
+      modal.insertBefore(refSection,modal.firstChild);
+    }
+  }
+  if(refSection){
+    const myCode=cud?.referralCode||'…';
+    refSection.innerHTML='';
+    const _rTitle=document.createElement('div');_rTitle.className='settings-section-title';_rTitle.textContent='REFERRAL';refSection.appendChild(_rTitle);
+    const _rBox=document.createElement('div');
+    _rBox.style.cssText='background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:4px;';
+    const _rLbl=document.createElement('div');_rLbl.style.cssText='font-size:10px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:1px;margin-bottom:8px;';_rLbl.textContent='YOUR REFERRAL CODE';
+    const _rRow=document.createElement('div');_rRow.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:10px;';
+    const _rCode=document.createElement('div');_rCode.style.cssText='font-family:var(--font-display,var(--font-mono));font-size:22px;font-weight:bold;color:var(--accent);letter-spacing:4px;';_rCode.textContent=myCode;
+    const _rCopy=document.createElement('button');_rCopy.textContent='COPY';_rCopy.style.cssText='background:rgba(68,102,255,0.15);border:1px solid var(--accent);color:var(--accent);font-family:var(--font-mono);font-size:9px;letter-spacing:2px;padding:4px 10px;border-radius:6px;cursor:pointer;';
+    _rCopy.addEventListener('click',()=>{navigator.clipboard.writeText(myCode).then(()=>{_rCopy.textContent='COPIED!';setTimeout(()=>{_rCopy.textContent='COPY';},1500);}).catch(()=>{});});
+    _rRow.appendChild(_rCode);_rRow.appendChild(_rCopy);
+    const _rInfo=document.createElement('div');_rInfo.style.cssText='font-size:10px;color:var(--text-dim);font-family:var(--font-mono);line-height:1.5;';_rInfo.textContent='Share this code. Friends who use it when signing up give you the REFERRAL badge. Once they spend 5 mins on NEXUS you earn +500 messages.';
+    _rBox.appendChild(_rLbl);_rBox.appendChild(_rRow);_rBox.appendChild(_rInfo);
+    refSection.appendChild(_rBox);
+  }
+
   // ── FONT PICKER ──
   let fontSection=document.getElementById('settings-font-section');
   if(!fontSection){
@@ -3073,34 +3101,6 @@ function renderSettings(){
   const mobCard=document.getElementById('mode-mobile');
   if(deskCard) deskCard.classList.toggle('selected', !mobileMode);
   if(mobCard) mobCard.classList.toggle('selected', mobileMode);
-
-  // ── REFERRAL CODE ──
-  let refSection=document.getElementById('settings-referral');
-  if(!refSection){
-    const modal=document.querySelector('#settings-modal .modal');
-    if(modal){
-      refSection=document.createElement('div');
-      refSection.id='settings-referral';
-      modal.appendChild(refSection);
-    }
-  }
-  if(refSection){
-    const myCode=cud?.referralCode||'…';
-    const refCount=cud?.referralCount||0;
-    refSection.innerHTML='';
-    const _rTitle=document.createElement('div');_rTitle.className='settings-section-title';_rTitle.textContent='REFERRAL';refSection.appendChild(_rTitle);
-    const _rBox=document.createElement('div');
-    _rBox.style.cssText='background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px;';
-    const _rLbl=document.createElement('div');_rLbl.style.cssText='font-size:10px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:1px;margin-bottom:8px;';_rLbl.textContent='YOUR REFERRAL CODE';
-    const _rRow=document.createElement('div');_rRow.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:10px;';
-    const _rCode=document.createElement('div');_rCode.style.cssText='font-family:var(--font-display,var(--font-mono));font-size:22px;font-weight:bold;color:var(--accent);letter-spacing:4px;';_rCode.textContent=myCode;
-    const _rCopy=document.createElement('button');_rCopy.textContent='COPY';_rCopy.style.cssText='background:rgba(68,102,255,0.15);border:1px solid var(--accent);color:var(--accent);font-family:var(--font-mono);font-size:9px;letter-spacing:2px;padding:4px 10px;border-radius:6px;cursor:pointer;';
-    _rCopy.addEventListener('click',()=>{navigator.clipboard.writeText(myCode).then(()=>{_rCopy.textContent='COPIED!';setTimeout(()=>{_rCopy.textContent='COPY';},1500);}).catch(()=>{});});
-    _rRow.appendChild(_rCode);_rRow.appendChild(_rCopy);
-    const _rInfo=document.createElement('div');_rInfo.style.cssText='font-size:10px;color:var(--text-dim);font-family:var(--font-mono);line-height:1.5;';_rInfo.textContent='Share this code with friends. When they sign up using your code you get the REFERRAL badge. Once they spend 5 mins on NEXUS you earn +500 messages.';
-    _rBox.appendChild(_rLbl);_rBox.appendChild(_rRow);_rBox.appendChild(_rInfo);
-    refSection.appendChild(_rBox);
-  }
 
   // ── THEME GRID ──
   const grid=$('theme-grid');grid.innerHTML='';
